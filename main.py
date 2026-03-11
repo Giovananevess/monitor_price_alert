@@ -37,15 +37,24 @@ def capturar_dados(url):
     }
  
 # --- PERSISTÊNCIA ---
-def salvar_historico(novo_dado):
-    arquivo = 'historico_precos.csv'
+import os
+
+def salvar_historico_particionado(novo_dado):
+    hoje = datetime.datetime.now()
+    # Cria estrutura de pastas: data/year=2026/month=03/day=11/
+    caminho = f"data/year={hoje.year}/month={hoje.month:02d}/day={hoje.day:02d}/"
+    
+    if not os.path.exists(caminho):
+        os.makedirs(caminho)
+        
+    arquivo = os.path.join(caminho, 'precos.csv')
     df_novo = pd.DataFrame([novo_dado])
-    try:
-        df_antigo = pd.read_csv(arquivo)
-        df_final = pd.concat([df_antigo, df_novo], ignore_index=True)
-    except FileNotFoundError:
-        df_final = df_novo
-    df_final.to_csv(arquivo, index=False)
+    
+    # Salva ou anexa no arquivo do dia
+    if os.path.exists(arquivo):
+        df_novo.to_csv(arquivo, mode='a', header=False, index=False)
+    else:
+        df_novo.to_csv(arquivo, index=False)
  
 # --- LÓGICA DE ALERTA ---
 def verificar_alerta(preco_atual, preco_desejado, nome_produto):
