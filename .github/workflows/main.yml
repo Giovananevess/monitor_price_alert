@@ -18,7 +18,7 @@ jobs:
           python-version: '3.9'
 
       - name: Instalar dependencias
-        run: pip install requests beautifulsoup4 pandas
+        run: pip install cloudscraper beautifulsoup4 pandas
 
       - name: Rodar Scraper
         run: python main.py
