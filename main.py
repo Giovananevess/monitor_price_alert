@@ -103,9 +103,9 @@ def verificar_alerta(preco_atual, preco_desejado, nome_produto):
 
 # --- EXECUÇÃO ---
 if __name__ == "__main__":
-    # IMPORTANTE: Usando a URL de ID que é menos bloqueada que a URL completa
-    id_produto = "MLB48954893"
-    url_alvo = f"https://www.mercadolivre.com.br/p/{id_produto}"
+    # Link de um produto na Amazon para teste
+    url_alvo = "https://www.amazon.com.br/dp/B088GHNCST" 
+    meu_preco_alvo = 5000.00
     
     meu_preco_alvo = 8000.00 
 
