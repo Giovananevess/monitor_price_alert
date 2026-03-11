@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 import datetime
 import pandas as pd
 import os
+import time
 
 # --- CONFIGURAÇÕES ---
 TOKEN = "8748353509:AAHTf1OtzXeZKMjqSLta-44E2a00JXOXouE"
@@ -12,16 +13,14 @@ def enviar_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": mensagem}
     try:
-        # Criamos um scraper temporário apenas para o envio se necessário, 
-        # mas requests simples costuma funcionar para a API do Telegram.
         import requests
         requests.post(url, data=payload)
     except Exception as e:
         print(f"Erro ao enviar para o Telegram: {e}")
 
-# --- EXTRAÇÃO (AGORA COM CLOUDSCRAPER) ---
+# --- EXTRAÇÃO (VERSÃO BLINDADA) ---
 def capturar_dados(url):
-    # O cloudscraper cria uma sessão que simula um navegador real para evitar bloqueios
+    # Criamos o scraper que simula um navegador real
     scraper = cloudscraper.create_scraper(
         browser={
             'browser': 'chrome',
@@ -30,46 +29,52 @@ def capturar_dados(url):
         }
     )
     
-    print("Acessando o site...")
-    response = scraper.get(url, timeout=30)
-    
-    if response.status_code != 200:
-        raise Exception(f"Erro ao acessar site: Status {response.status_code}")
-        
-    soup = BeautifulSoup(response.text, 'html.parser')
+    # Tentamos até 3 vezes com um pequeno intervalo se falhar
+    for i in range(3):
+        try:
+            print(f"Tentativa {i+1}: Acessando o site...")
+            response = scraper.get(url, timeout=30)
+            
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # Seletor 1: Tenta o título padrão
+                titulo_elem = soup.find('h1') or soup.select_one('.ui-pdp-title')
+                
+                if titulo_elem:
+                    titulo = titulo_elem.text.strip()
+                    
+                    # Busca o preço pela meta tag (mais confiável em servidores)
+                    preco_meta = soup.find('meta', {'property': 'twitter:data2'})
+                    if preco_meta:
+                        valor_texto = preco_meta.get('content').replace('R$', '').replace('.', '').replace(',', '.').strip()
+                        preco_final = float(valor_texto)
+                    else:
+                        # Fallback para o seletor de classe
+                        preco_elem = soup.select_one('.andes-money-amount__fraction')
+                        if not preco_elem:
+                            continue # Tenta a próxima iteração
+                        
+                        preco_inteiro = preco_elem.text.replace('.', '')
+                        centavos_elem = soup.select_one('.andes-money-amount__cents')
+                        centavos = centavos_elem.text if centavos_elem else "00"
+                        preco_final = float(f"{preco_inteiro}.{centavos}")
 
-    # Busca o título
-    titulo_elem = soup.find('h1') or soup.select_one('.ui-pdp-title')
-    if not titulo_elem:
-        # Se falhar, salva o HTML para você investigar depois
-        with open("debug_page.html", "w", encoding='utf-8') as f:
-            f.write(response.text)
-        raise Exception("Título não encontrado. O site pode ter detectado o bot.")
+                    return {
+                        "data": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "produto": titulo,
+                        "preco": preco_final
+                    }
+            
+            print(f"Aviso: Status {response.status_code} na tentativa {i+1}. Aguardando...")
+            time.sleep(5) # Espera 5 segundos antes de tentar de novo
+            
+        except Exception as e:
+            print(f"Erro na tentativa {i+1}: {e}")
+            time.sleep(5)
 
-    titulo = titulo_elem.text.strip()
-
-    # Busca o preço (Tentativa 1: Meta tag - mais estável)
-    preco_meta = soup.find('meta', {'property': 'twitter:data2'})
-    
-    if preco_meta:
-        valor_texto = preco_meta.get('content').replace('R$', '').replace('.', '').replace(',', '.').strip()
-        preco_final = float(valor_texto)
-    else:
-        # Tentativa 2: Seletores de classe (Fallback)
-        preco_elem = soup.select_one('.andes-money-amount__fraction')
-        if not preco_elem:
-            raise Exception("Preço não encontrado nos seletores conhecidos.")
-        
-        preco_inteiro = preco_elem.text.replace('.', '')
-        centavos_elem = soup.select_one('.andes-money-amount__cents')
-        centavos = centavos_elem.text if centavos_elem else "00"
-        preco_final = float(f"{preco_inteiro}.{centavos}")
-
-    return {
-        "data": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "produto": titulo,
-        "preco": preco_final
-    }
+    # Se sair do loop sem retornar, deu erro total
+    raise Exception("O Mercado Livre bloqueou todas as tentativas de acesso do servidor.")
 
 # --- PERSISTÊNCIA PARTICIONADA ---
 def salvar_historico_particionado(novo_dado):
@@ -92,20 +97,23 @@ def verificar_alerta(preco_atual, preco_desejado, nome_produto):
     if preco_atual <= preco_desejado:
         msg = f"🚨 BAIXOU O PREÇO!\n\nPRODUTO: {nome_produto}\nPREÇO AGORA: R$ {preco_atual}\nALVO: R$ {preco_desejado}"
         enviar_telegram(msg)
-        print(f"Alerta enviado! Preço atual: R$ {preco_atual}")
+        print(f"✅ Sucesso! Alerta enviado para o Telegram.")
     else:
-        print(f"Preço de R$ {preco_atual} ainda acima do alvo de R$ {preco_desejado}.")
+        print(f"ℹ️ Preço de R$ {preco_atual} ainda acima do alvo (R$ {preco_desejado}).")
 
 # --- EXECUÇÃO ---
 if __name__ == "__main__":
-    url_alvo = "https://www.mercadolivre.com.br/smart-tv-u8100f-crystal-uhd-4k-2025-65-preto-samsung-bivolt/p/MLB48954893"
+    # IMPORTANTE: Usando a URL de ID que é menos bloqueada que a URL completa
+    id_produto = "MLB48954893"
+    url_alvo = f"https://www.mercadolivre.com.br/p/{id_produto}"
+    
     meu_preco_alvo = 8000.00 
 
-    print("Iniciando monitoramento...")
+    print("--- INICIANDO PIPELINE DE MONITORAMENTO ---")
     try:
         dados_coletados = capturar_dados(url_alvo)
         salvar_historico_particionado(dados_coletados)
         verificar_alerta(dados_coletados['preco'], meu_preco_alvo, dados_coletados['produto'])
-        print("Pipeline finalizado com sucesso.")
+        print("--- PIPELINE FINALIZADO COM SUCESSO ---")
     except Exception as e:
-        print(f"Erro no pipeline: {e}")
+        print(f"❌ Falha crítica: {e}")
