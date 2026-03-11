@@ -1,0 +1,33 @@
+name: Monitor de Precos
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # Roda a cada 6 horas (Horário UTC)
+  workflow_dispatch:      # Permite você rodar manualmente no site do GitHub
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do codigo
+        uses: actions/checkout@v3
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Instalar dependencias
+        run: pip install requests beautifulsoup4 pandas
+
+      - name: Rodar Scraper
+        run: python main.py
+
+      - name: Commit e Push dos dados
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add historico_precos.csv
+          # O "|| exit 0" serve para não dar erro se o preço não mudou e não tiver nada para commitar
+          git commit -m "Update: Novo preco capturado" || exit 0
+          git push
