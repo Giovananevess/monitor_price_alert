@@ -21,14 +21,16 @@ def enviar_telegram(mensagem):
 # --- EXTRAÇÃO (VERSÃO BLINDADA) ---
 def capturar_dados(url):
     # Criamos o scraper que simula um navegador real
+    # Tente substituir a linha do scraper por esta configuração mais pesada:
     scraper = cloudscraper.create_scraper(
         browser={
             'browser': 'chrome',
             'platform': 'windows',
             'desktop': True
-        }
+        },
+        interpreter='nodejs' # Isso tenta simular o carregamento de scripts reais
     )
-    
+
     # Tentamos até 3 vezes com um pequeno intervalo se falhar
     for i in range(3):
         try:
