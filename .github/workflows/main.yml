@@ -24,7 +24,8 @@ jobs:
 
       - name: Instalar dependencias
         run: |
-          pip install cloudscraper beautifulsoup4 pandas requests
+          pip install cloudscraper beautifulsoup4 pandas requests python-dotenv
+
 
       - name: Rodar Scraper
         # Aqui conectamos os Secrets do GitHub com o seu script Python

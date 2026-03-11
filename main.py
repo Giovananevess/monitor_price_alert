@@ -1,14 +1,19 @@
+import os
 import datetime
 import pandas as pd
-import os
 import random
 import requests
-from dotenv import load_dotenv  # <-- Adicione isso
 
-# Carrega as variáveis do arquivo .env para o ambiente do sistema
-load_dotenv() 
+# Tenta carregar o dotenv para rodar localmente. 
+# Se não estiver instalado (como no GitHub Actions), ele ignora e segue em frente.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 # --- CONFIGURAÇÕES (LENDO DAS VARIÁVEIS DE AMBIENTE) ---
+# Se houver um arquivo .env, ele pega de lá. Se estiver no GitHub, pega dos Secrets.
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
@@ -21,7 +26,6 @@ def enviar_telegram(mensagem):
     params = {"chat_id": CHAT_ID, "text": mensagem}
     
     try:
-        # Usamos GET para replicar o teste de sucesso que você fez no navegador
         response = requests.get(url, params=params)
         if response.status_code == 200:
             print("✅ Mensagem confirmada pelo Telegram!")
@@ -32,7 +36,6 @@ def enviar_telegram(mensagem):
         
 # --- SIMULAÇÃO DE EXTRAÇÃO (PARA VALIDAR O PIPELINE) ---
 def capturar_dados_simulado():
-    # Preço aleatório entre 3500 e 4200 para simular variação
     preco_simulado = round(random.uniform(3500.0, 4200.0), 2)
     return {
         "data": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -43,7 +46,6 @@ def capturar_dados_simulado():
 # --- PERSISTÊNCIA (PARTICIONAMENTO PROFISSIONAL) ---
 def salvar_historico_particionado(novo_dado):
     hoje = datetime.datetime.now()
-    # Estrutura de pastas estilo Data Lake (Year/Month/Day)
     caminho = f"data/year={hoje.year}/month={hoje.month:02d}/day={hoje.day:02d}/"
     
     if not os.path.exists(caminho):
@@ -52,7 +54,6 @@ def salvar_historico_particionado(novo_dado):
     arquivo = os.path.join(caminho, 'precos.csv')
     df_novo = pd.DataFrame([novo_dado])
     
-    # Se o arquivo já existe, anexa sem o cabeçalho. Se não, cria um novo.
     if os.path.exists(arquivo):
         df_novo.to_csv(arquivo, mode='a', header=False, index=False)
     else:
@@ -68,13 +69,13 @@ def verificar_alerta(preco_atual, preco_desejado, nome_produto):
 if __name__ == "__main__":
     print("--- INICIANDO PIPELINE DE TESTE ---")
     try:
-        # 1. Captura (Simulada para evitar bloqueios de IP do GitHub)
+        # 1. Captura Simulada
         dados = capturar_dados_simulado()
         
         # 2. Persistência
         salvar_historico_particionado(dados)
         
-        # 3. Alerta (Alvo definido em 5000 para garantir o disparo no teste)
+        # 3. Verificação de Alerta
         verificar_alerta(dados['preco'], 5000.00, dados['produto'])
         
         print("--- PIPELINE FINALIZADO COM SUCESSO ---")
