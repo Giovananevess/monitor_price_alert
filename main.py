@@ -18,24 +18,45 @@ def enviar_telegram(mensagem):
 # --- EXTRAÇÃO ---
 def capturar_dados(url):
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
+        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
     }
     response = requests.get(url, headers=headers)
     soup = BeautifulSoup(response.text, 'html.parser')
- 
-    titulo = soup.find('h1', class_='ui-pdp-title').text.strip()
-    preco_inteiro = soup.find('span', class_='andes-money-amount__fraction').text
+
+    # Tenta encontrar o título (seletor atualizado)
+    titulo_elem = soup.find('h1', class_='ui-pdp-title')
+    if not titulo_elem:
+        # Se falhar, vamos imprimir o HTML para debug (ajuda muito no Actions)
+        print("DEBUG: Não encontrou o título. O layout pode ter mudado.")
+        raise Exception("Título não encontrado na página")
+    
+    titulo = titulo_elem.text.strip()
+
+    # O Mercado Livre às vezes usa classes diferentes para o preço. 
+    # Vamos tentar o seletor mais comum:
+    preco_elem = soup.find('span', class_='andes-money-amount__fraction')
+    
+    if not preco_elem:
+        print("DEBUG: Não encontrou o elemento do preço.")
+        raise Exception("Preço não encontrado na página")
+
+    preco_inteiro = preco_elem.text.replace('.', '')
+    
     try:
-        centavos = soup.find('span', class_='andes-money-amount__cents').text
+        centavos_elem = soup.find('span', class_='andes-money-amount__cents')
+        centavos = centavos_elem.text if centavos_elem else "00"
     except:
         centavos = "00"
-    preco_final = float(f"{preco_inteiro.replace('.', '')}.{centavos}")
+    
+    preco_final = float(f"{preco_inteiro}.{centavos}")
+    
     return {
         "data": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "produto": titulo,
         "preco": preco_final
     }
- 
+
 # --- PERSISTÊNCIA ---
 import os
 
