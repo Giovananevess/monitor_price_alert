@@ -27,7 +27,7 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add historico_precos.csv
-          # O "|| exit 0" serve para não dar erro se o preço não mudou e não tiver nada para commitar
-          git commit -m "Update: Novo preco capturado" || exit 0
+          # Mudamos de 'git add historico_precos.csv' para:
+          git add data/
+          git commit -m "Update: Novo preco capturado e particionado" || exit 0
           git push
