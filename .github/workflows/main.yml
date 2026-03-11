@@ -27,7 +27,8 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          # Mudamos de 'git add historico_precos.csv' para:
-          git add data/
+          # O ponto (.) adiciona tudo que foi criado pelo script (pastas e arquivos)
+          git add .
+          # O || exit 0 impede que o erro de "nada para commitar" pare o processo
           git commit -m "Update: Novo preco capturado e particionado" || exit 0
           git push
