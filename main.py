@@ -73,7 +73,7 @@ if __name__ == "__main__":
     print("Iniciando monitoramento...")
     try:
         dados = capturar_dados(url_alvo)
-        salvar_historico(dados)
+        salvar_historico_particionado(dados)
         verificar_alerta(dados['preco'], meu_preco_alvo, dados['produto'])
         print("Processo finalizado com sucesso.")
     except Exception as e:
