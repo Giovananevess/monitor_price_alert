@@ -55,7 +55,7 @@ def salvar_historico_particionado(novo_dado):
 def verificar_alerta(preco_atual, preco_desejado, nome_produto):
     # Forçamos o alerta para você ver chegando no celular
     if preco_atual <= preco_desejado:
-        msg = f"🚨 TESTE DE PIPELINE!\n\nPRODUTO: {nome_produto}\nPREÇO: R$ {preco_atual}\nSstatus: Pipeline funcionando!"
+        msg = f"🚨 ALERTA DE PROMOÇÃO!\n\nPRODUTO: {nome_produto}\nPREÇO: R$ {preco_atual}\nSstatus: Sem erro de pipeline"
         enviar_telegram(msg)
         print("✅ Mensagem enviada ao Telegram!")
 
