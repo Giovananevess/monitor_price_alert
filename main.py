@@ -18,39 +18,46 @@ def enviar_telegram(mensagem):
 # --- EXTRAÇÃO ---
 def capturar_dados(url):
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
-        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer": "https://www.google.com/"
     }
-    response = requests.get(url, headers=headers)
+    
+    response = requests.get(url, headers=headers, timeout=30)
+    # Se o site bloquear, o status não será 200
+    if response.status_code != 200:
+        raise Exception(f"Erro ao acessar site: Status {response.status_code}")
+        
     soup = BeautifulSoup(response.text, 'html.parser')
 
-    # Tenta encontrar o título (seletor atualizado)
-    titulo_elem = soup.find('h1', class_='ui-pdp-title')
+    # Busca o título de forma mais robusta (procurando a tag h1 de produto)
+    titulo_elem = soup.find('h1') or soup.select_one('.ui-pdp-title')
     if not titulo_elem:
-        # Se falhar, vamos imprimir o HTML para debug (ajuda muito no Actions)
-        print("DEBUG: Não encontrou o título. O layout pode ter mudado.")
-        raise Exception("Título não encontrado na página")
-    
+        # Debug radical: salva o HTML para você ver o que o GitHub está recebendo
+        with open("debug_page.html", "w", encoding='utf-8') as f:
+            f.write(response.text)
+        raise Exception("Título não encontrado. O site pode ter bloqueado o bot.")
+
     titulo = titulo_elem.text.strip()
 
-    # O Mercado Livre às vezes usa classes diferentes para o preço. 
-    # Vamos tentar o seletor mais comum:
-    preco_elem = soup.find('span', class_='andes-money-amount__fraction')
-    
-    if not preco_elem:
-        print("DEBUG: Não encontrou o elemento do preço.")
-        raise Exception("Preço não encontrado na página")
-
-    preco_inteiro = preco_elem.text.replace('.', '')
-    
-    try:
-        centavos_elem = soup.find('span', class_='andes-money-amount__cents')
+    # Busca o preço tentando múltiplos seletores comuns do ML
+    # O seletor 'meta' com property 'twitter:data2' costuma ter o preço limpo
+    preco_meta = soup.find('meta', {'property': 'twitter:data2'})
+    if preco_meta:
+        # O valor vem como "R$ 3.989,23" ou "3989.23"
+        valor_texto = preco_meta.get('content').replace('R$', '').replace('.', '').replace(',', '.').strip()
+        preco_final = float(valor_texto)
+    else:
+        # Fallback para o seletor de span caso o meta falhe
+        preco_elem = soup.select_one('.andes-money-amount__fraction')
+        if not preco_elem:
+            raise Exception("Preço não encontrado nos seletores conhecidos.")
+        
+        preco_inteiro = preco_elem.text.replace('.', '')
+        centavos_elem = soup.select_one('.andes-money-amount__cents')
         centavos = centavos_elem.text if centavos_elem else "00"
-    except:
-        centavos = "00"
-    
-    preco_final = float(f"{preco_inteiro}.{centavos}")
-    
+        preco_final = float(f"{preco_inteiro}.{centavos}")
+
     return {
         "data": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "produto": titulo,
