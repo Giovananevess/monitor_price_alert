@@ -44,31 +44,64 @@ def salvar_particionado(novo_dado):
         df_novo.to_csv(arquivo, index=False)
     print(f"💾 Dados salvos em: {arquivo}")
 
+
 def capturar_preco(termo):
     termo_url = termo.replace(" ", "-")
-    url_busca = f"https://lista.mercadolivre.com.br/{termo_url}"
+    # Adicionamos um parâmetro de busca para parecer uma navegação mais natural
+    url_busca = f"https://lista.mercadolivre.com.br/{termo_url}_NoIndex_True"
     
-    scraper = cloudscraper.create_scraper(browser={'browser': 'chrome','platform': 'windows','desktop': True})
+    # Criamos o scraper com um disfarce de navegador Windows atualizado
+    scraper = cloudscraper.create_scraper(
+        browser={
+            'browser': 'chrome',
+            'platform': 'windows',
+            'desktop': True
+        }
+    )
     
     try:
-        response = scraper.get(url_busca)
+        # Adicionamos um timeout para não travar o GitHub Actions
+        response = scraper.get(url_busca, timeout=20)
+        
+        # LOG DE DIAGNÓSTICO: Isso é essencial para ver o erro no GitHub
+        print(f"DEBUG: Status {response.status_code} para '{termo}'")
+        
+        if response.status_code != 200:
+            return None
+
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # Seletor resiliente para o primeiro item
+        # Verificação de bloqueio por Captcha
+        if "captcha" in response.text.lower() or "robot" in response.text.lower():
+            print(f"🚨 BLOQUEIO: O IP do GitHub foi detectado como bot para '{termo}'.")
+            return None
+
+        # Tentativa de encontrar o item com seletores variados (layout lista ou grade)
         item = soup.select_one('div.ui-search-result__wrapper') or \
-               soup.select_one('div.ui-search-result__content')
+               soup.select_one('div.ui-search-result__content') or \
+               soup.select_one('.ui-search-layout__item')
 
-        if not item: return None
+        if not item:
+            print(f"⚠️ Aviso: Layout não reconhecido ou produto não encontrado.")
+            return None
 
-        nome = (item.select_one('h2') or item.select_one('h3')).text.strip()
+        # Extração do Nome
+        titulo_tag = item.select_one('h2') or item.select_one('h3')
+        nome = titulo_tag.text.strip() if titulo_tag else "Produto sem título"
         
-        # Extração de preço
-        preco_raw = item.select_one('span.andes-money-amount__fraction').text.replace('.', '')
+        # Extração de preço com verificação de erro
+        preco_tag = item.select_one('span.andes-money-amount__fraction')
+        if not preco_tag:
+            return None
+            
+        preco_raw = preco_tag.text.replace('.', '')
         centavos_tag = item.select_one('span.andes-money-amount__cents')
         centavos = float(centavos_tag.text) / 100 if centavos_tag else 0.0
         preco_final = float(preco_raw) + centavos
         
-        link = (item.select_one('a.ui-search-link') or item.select_one('a'))['href']
+        # Extração de Link
+        link_tag = item.select_one('a.ui-search-link') or item.select_one('a')
+        link = link_tag['href'] if link_tag and link_tag.has_attr('href') else "Link não disponível"
 
         return {
             "data": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -79,6 +112,42 @@ def capturar_preco(termo):
     except Exception as e:
         print(f"⚠️ Erro ao buscar {termo}: {e}")
         return None
+
+# def capturar_preco(termo):
+#     termo_url = termo.replace(" ", "-")
+#     url_busca = f"https://lista.mercadolivre.com.br/{termo_url}"
+    
+#     scraper = cloudscraper.create_scraper(browser={'browser': 'chrome','platform': 'windows','desktop': True})
+    
+#     try:
+#         response = scraper.get(url_busca)
+#         soup = BeautifulSoup(response.text, 'html.parser')
+
+#         # Seletor resiliente para o primeiro item
+#         item = soup.select_one('div.ui-search-result__wrapper') or \
+#                soup.select_one('div.ui-search-result__content')
+
+#         if not item: return None
+
+#         nome = (item.select_one('h2') or item.select_one('h3')).text.strip()
+        
+#         # Extração de preço
+#         preco_raw = item.select_one('span.andes-money-amount__fraction').text.replace('.', '')
+#         centavos_tag = item.select_one('span.andes-money-amount__cents')
+#         centavos = float(centavos_tag.text) / 100 if centavos_tag else 0.0
+#         preco_final = float(preco_raw) + centavos
+        
+#         link = (item.select_one('a.ui-search-link') or item.select_one('a'))['href']
+
+#         return {
+#             "data": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+#             "produto": nome,
+#             "preco": preco_final,
+#             "link": link
+#         }
+#     except Exception as e:
+#         print(f"⚠️ Erro ao buscar {termo}: {e}")
+#         return None
 
 if __name__ == "__main__":
     print(f"🚀 Iniciando Monitoramento: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}")
