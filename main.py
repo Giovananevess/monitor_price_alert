@@ -11,8 +11,8 @@ load_dotenv()
 # --- CONFIGURAÇÕES ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-PRODUTO_BUSCA = "iPhone 15 128gb"
-PRECO_DESEJADO = 8000.00 # Ajuste conforme sua necessidade
+PRODUTO_BUSCA = "headfone bluetooth jbl" # Ajuste conforme sua necessidade
+PRECO_DESEJADO = 500.00 # Ajuste conforme sua necessidade
 
 def enviar_telegram(mensagem):
     if not TOKEN or not CHAT_ID:
