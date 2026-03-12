@@ -2,7 +2,7 @@ name: Monitor de Precos
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # Ajustei para rodar a cada 6 horas (conforme seu comentário)
+    - cron: '0 */2 * * *' # Ajustei para rodar a cada 6 horas (conforme seu comentário)
   workflow_dispatch:      # Permite rodar manualmente
 
 jobs:
