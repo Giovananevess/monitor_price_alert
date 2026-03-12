@@ -1,51 +1,68 @@
 import os
 import datetime
 import pandas as pd
-import random
 import requests
+from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 
-# Tenta carregar o dotenv para rodar localmente. 
-# Se não estiver instalado (como no GitHub Actions), ele ignora e segue em frente.
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
-
-# --- CONFIGURAÇÕES (LENDO DAS VARIÁVEIS DE AMBIENTE) ---
-# Se houver um arquivo .env, ele pega de lá. Se estiver no GitHub, pega dos Secrets.
+# --- CONFIGURAÇÕES ---
+load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
+# COLOQUE AQUI O LINK DO PRODUTO QUE VOCÊ QUER MONITORAR
+URL_PRODUTO = "https://www.mercadolivre.com.br/apple-iphone-15-512-gb-preto-distribuidor-autorizado/p/MLB1027172666?pdp_filters=item_id%3AMLB3583817811&matt_tool=38524122#origin=share&sid=share&wid=MLB3583817811"
+PRECO_DESEJADO = 7000.00  
+
 def enviar_telegram(mensagem):
     if not TOKEN or not CHAT_ID:
-        print("❌ Erro: Token ou Chat ID não configurados nas variáveis de ambiente.")
+        print("❌ Erro: Credenciais do Telegram não encontradas.")
         return
-    
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     params = {"chat_id": CHAT_ID, "text": mensagem}
+    try:
+        requests.get(url, params=params)
+        print("✅ Alerta enviado ao Telegram!")
+    except Exception as e:
+        print(f"❌ Erro ao conectar com Telegram: {e}")
+
+def capturar_preco_real(url):
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
     
     try:
-        response = requests.get(url, params=params)
-        if response.status_code == 200:
-            print("✅ Mensagem confirmada pelo Telegram!")
-        else:
-            print(f"❌ Erro do Telegram: {response.status_code} - {response.text}")
-    except Exception as e:
-        print(f"❌ Erro de conexão ao enviar Telegram: {e}")
-        
-# --- SIMULAÇÃO DE EXTRAÇÃO (PARA VALIDAR O PIPELINE) ---
-def capturar_dados_simulado():
-    preco_simulado = round(random.uniform(3500.0, 4200.0), 2)
-    return {
-        "data": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "produto": "Smart TV Samsung 65 QLED (Simulado)",
-        "preco": preco_simulado
-    }
+        print(f"🔍 Acessando produto no Mercado Livre...")
+        response = requests.get(url, headers=headers)
+        soup = BeautifulSoup(response.text, 'html.parser')
 
-# --- PERSISTÊNCIA (PARTICIONAMENTO PROFISSIONAL) ---
-def salvar_historico_particionado(novo_dado):
+        # Extraindo Nome (ajustado para a classe atual do ML)
+        nome = soup.find("h1", {"class": "ui-pdp-title"}).text.strip()
+
+        # Extraindo Preço (buscando na meta tag que é mais estável)
+        preco_meta = soup.find("meta", {"itemprop": "price"})
+        if preco_meta:
+            preco = float(preco_meta["content"])
+        else:
+            # Fallback caso a meta tag falhe
+            preco_texto = soup.find("span", {"class": "andes-money-amount__fraction"}).text
+            preco = float(preco_texto.replace('.', '').replace(',', '.'))
+
+        print(f"📦 Produto: {nome}")
+        print(f"💰 Preço atual: R$ {preco}")
+
+        return {
+            "data": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "produto": nome,
+            "preco": preco
+        }
+    except Exception as e:
+        print(f"❌ Erro ao capturar dados do site: {e}")
+        return None
+
+def salvar_historico(novo_dado):
     hoje = datetime.datetime.now()
+    # Estrutura de Data Lake (Ano/Mês/Dia)
     caminho = f"data/year={hoje.year}/month={hoje.month:02d}/day={hoje.day:02d}/"
     
     if not os.path.exists(caminho):
@@ -58,26 +75,24 @@ def salvar_historico_particionado(novo_dado):
         df_novo.to_csv(arquivo, mode='a', header=False, index=False)
     else:
         df_novo.to_csv(arquivo, index=False)
-    print(f"📁 Dados salvos em: {arquivo}")
+    print(f"📁 Dados persistidos em: {arquivo}")
 
-# --- LÓGICA DE ALERTA ---
-def verificar_alerta(preco_atual, preco_desejado, nome_produto):
-    if preco_atual <= preco_desejado:
-        msg = f"🚨 ALERTA DE PROMOÇÃO!\n\nPRODUTO: {nome_produto}\nPREÇO: R$ {preco_atual}\nStatus: Pipeline rodando com segurança!"
-        enviar_telegram(msg)
-
+# --- EXECUÇÃO PRINCIPAL ---
 if __name__ == "__main__":
-    print("--- INICIANDO PIPELINE DE TESTE ---")
-    try:
-        # 1. Captura Simulada
-        dados = capturar_dados_simulado()
+    print("🚀 INICIANDO MONITORAMENTO REAL...")
+    
+    dados = capturar_preco_real(URL_PRODUTO)
+    
+    if dados:
+        salvar_historico(dados)
         
-        # 2. Persistência
-        salvar_historico_particionado(dados)
-        
-        # 3. Verificação de Alerta
-        verificar_alerta(dados['preco'], 5000.00, dados['produto'])
-        
-        print("--- PIPELINE FINALIZADO COM SUCESSO ---")
-    except Exception as e:
-        print(f"❌ Falha crítica no pipeline: {e}")
+        if dados['preco'] <= PRECO_DESEJADO:
+            msg = (f"🚨 PROMOÇÃO ENCONTRADA!\n\n"
+                   f"📦 {dados['produto']}\n"
+                   f"💵 Preço: R$ {dados['preco']}\n"
+                   f"🔗 Link: {URL_PRODUTO}")
+            enviar_telegram(msg)
+        else:
+            print(f"ℹ️ O preço (R$ {dados['preco']}) ainda está acima de R$ {PRECO_DESEJADO}. Sem alerta.")
+    
+    print("🏁 PIPELINE FINALIZADO.")
