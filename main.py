@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 import time
 import requests
+import random
 
 load_dotenv()
 
@@ -45,12 +46,12 @@ def salvar_particionado(novo_dado):
     print(f"💾 Dados salvos em: {arquivo}")
 
 
+
 def capturar_preco(termo):
     termo_url = termo.replace(" ", "-")
-    # Adicionamos um parâmetro de busca para parecer uma navegação mais natural
-    url_busca = f"https://lista.mercadolivre.com.br/{termo_url}_NoIndex_True"
+    url_busca = f"https://lista.mercadolivre.com.br/{termo_url}"
     
-    # Criamos o scraper com um disfarce de navegador Windows atualizado
+    # Criamos um scraper
     scraper = cloudscraper.create_scraper(
         browser={
             'browser': 'chrome',
@@ -59,49 +60,59 @@ def capturar_preco(termo):
         }
     )
     
+    # 1. Definimos cabeçalhos que um Chrome real enviaria
+    headers = {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer": "https://www.google.com/", # Faz parecer que você veio do Google
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "cross-site",
+        "Upgrade-Insecure-Requests": "1"
+    }
+    
     try:
-        # Adicionamos um timeout para não travar o GitHub Actions
-        response = scraper.get(url_busca, timeout=20)
+        # 2. Pequena pausa aleatória para não parecer um robô mecânico
+        time.sleep(random.uniform(1, 3))
         
-        # LOG DE DIAGNÓSTICO: Isso é essencial para ver o erro no GitHub
-        print(f"DEBUG: Status {response.status_code} para '{termo}'")
+        # 3. Fazemos a requisição com os headers manuais
+        response = scraper.get(url_busca, headers=headers, timeout=20)
         
-        if response.status_code != 200:
-            return None
-
+        # Log para você ver no GitHub Actions o que está acontecendo
+        print(f"DEBUG: {termo} -> Status: {response.status_code} | Tamanho: {len(response.text)}")
+        
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # Verificação de bloqueio por Captcha
-        if "captcha" in response.text.lower() or "robot" in response.text.lower():
-            print(f"🚨 BLOQUEIO: O IP do GitHub foi detectado como bot para '{termo}'.")
-            return None
-
-        # Tentativa de encontrar o item com seletores variados (layout lista ou grade)
-        item = soup.select_one('div.ui-search-result__wrapper') or \
-               soup.select_one('div.ui-search-result__content') or \
-               soup.select_one('.ui-search-layout__item')
+        # Seletor focado nas classes que SEMPRE aparecem nos resultados
+        # Tentamos o container de imagem que é muito estável
+        item = soup.find("div", {"class": "ui-search-result__wrapper"}) or \
+               soup.find("div", {"class": "ui-search-result__content"}) or \
+               soup.select_one(".ui-search-layout__item")
 
         if not item:
-            print(f"⚠️ Aviso: Layout não reconhecido ou produto não encontrado.")
+            # Se não achou o item, vamos imprimir o título da página para depurar
+            page_title = soup.title.string if soup.title else "Sem título"
+            print(f"⚠️ Não encontrou item para '{termo}'. Título da página: {page_title}")
             return None
 
-        # Extração do Nome
-        titulo_tag = item.select_one('h2') or item.select_one('h3')
-        nome = titulo_tag.text.strip() if titulo_tag else "Produto sem título"
+        # Título
+        nome = (item.find("h2") or item.find("h3")).text.strip()
         
-        # Extração de preço com verificação de erro
-        preco_tag = item.select_one('span.andes-money-amount__fraction')
+        # Preço (usando seletor CSS mais direto)
+        preco_tag = item.select_one('.andes-money-amount__fraction')
         if not preco_tag:
             return None
             
         preco_raw = preco_tag.text.replace('.', '')
-        centavos_tag = item.select_one('span.andes-money-amount__cents')
+        
+        centavos_tag = item.select_one('.andes-money-amount__cents')
         centavos = float(centavos_tag.text) / 100 if centavos_tag else 0.0
+        
         preco_final = float(preco_raw) + centavos
         
-        # Extração de Link
-        link_tag = item.select_one('a.ui-search-link') or item.select_one('a')
-        link = link_tag['href'] if link_tag and link_tag.has_attr('href') else "Link não disponível"
+        # Link
+        link_tag = item.find("a", {"class": "ui-search-link"}) or item.find("a")
+        link = link_tag['href'] if link_tag else ""
 
         return {
             "data": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -110,7 +121,7 @@ def capturar_preco(termo):
             "link": link
         }
     except Exception as e:
-        print(f"⚠️ Erro ao buscar {termo}: {e}")
+        print(f"⚠️ Erro em {termo}: {e}")
         return None
 
 # def capturar_preco(termo):
