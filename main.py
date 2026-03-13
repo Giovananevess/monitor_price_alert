@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import time
 import requests
 import random
+from urllib.parse import quote
 
 load_dotenv()
 
@@ -46,83 +47,45 @@ def salvar_particionado(novo_dado):
     print(f"💾 Dados salvos em: {arquivo}")
 
 
+import requests
+from urllib.parse import quote
 
 def capturar_preco(termo):
-    termo_url = termo.replace(" ", "-")
-    url_busca = f"https://lista.mercadolivre.com.br/{termo_url}"
+    termo_encoded = quote(termo)
+    # Mudamos para a URL padrão, mas vamos garantir que o requests não use proxy do sistema que possa estar quebrado
+    url_busca = f"https://api.mercadolivre.com/sites/MLB/search?q={termo_encoded}&limit=1"
     
-    # Criamos um scraper
-    scraper = cloudscraper.create_scraper(
-        browser={
-            'browser': 'chrome',
-            'platform': 'windows',
-            'desktop': True
-        }
-    )
-    
-    # 1. Definimos cabeçalhos que um Chrome real enviaria
     headers = {
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Referer": "https://www.google.com/", # Faz parecer que você veio do Google
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "cross-site",
-        "Upgrade-Insecure-Requests": "1"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json"
     }
-    
+
+    session = requests.Session()
+    session.trust_env = False  # Ignora configurações de proxy do Windows que podem estar atrapalhando
+
     try:
-        # 2. Pequena pausa aleatória para não parecer um robô mecânico
-        time.sleep(random.uniform(1, 3))
+        # Timeout curto para não ficar esperando o DNS infinito
+        response = session.get(url_busca, headers=headers, timeout=10)
         
-        # 3. Fazemos a requisição com os headers manuais
-        response = scraper.get(url_busca, headers=headers, timeout=20)
-        
-        # Log para você ver no GitHub Actions o que está acontecendo
-        print(f"DEBUG: {termo} -> Status: {response.status_code} | Tamanho: {len(response.text)}")
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
-
-        # Seletor focado nas classes que SEMPRE aparecem nos resultados
-        # Tentamos o container de imagem que é muito estável
-        item = soup.find("div", {"class": "ui-search-result__wrapper"}) or \
-               soup.find("div", {"class": "ui-search-result__content"}) or \
-               soup.select_one(".ui-search-layout__item")
-
-        if not item:
-            # Se não achou o item, vamos imprimir o título da página para depurar
-            page_title = soup.title.string if soup.title else "Sem título"
-            print(f"⚠️ Não encontrou item para '{termo}'. Título da página: {page_title}")
-            return None
-
-        # Título
-        nome = (item.find("h2") or item.find("h3")).text.strip()
-        
-        # Preço (usando seletor CSS mais direto)
-        preco_tag = item.select_one('.andes-money-amount__fraction')
-        if not preco_tag:
-            return None
+        if response.status_code == 200:
+            data = response.json()
+            results = data.get('results', [])
+            if results:
+                item = results[0]
+                return {
+                    "data": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "produto": item.get('title'),
+                    "preco": float(item.get('price')),
+                    "link": item.get('permalink')
+                }
+        else:
+            print(f"DEBUG: Status {response.status_code} para {termo}")
             
-        preco_raw = preco_tag.text.replace('.', '')
-        
-        centavos_tag = item.select_one('.andes-money-amount__cents')
-        centavos = float(centavos_tag.text) / 100 if centavos_tag else 0.0
-        
-        preco_final = float(preco_raw) + centavos
-        
-        # Link
-        link_tag = item.find("a", {"class": "ui-search-link"}) or item.find("a")
-        link = link_tag['href'] if link_tag else ""
-
-        return {
-            "data": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "produto": nome,
-            "preco": preco_final,
-            "link": link
-        }
     except Exception as e:
-        print(f"⚠️ Erro em {termo}: {e}")
-        return None
+        print(f"⚠️ Erro de conexão em {termo}: {e}")
+    
+    return None
+
 
 # def capturar_preco(termo):
 #     termo_url = termo.replace(" ", "-")
